@@ -81,6 +81,10 @@
 //#define RADIOMETRIC_ODTS /* RGB ratio-preserving ODTs (chromaticity preserving) */
 //#define PQ_GAMMA /* use PQ gamma HDR instead of gamma exponent */
 
+//***** NOTE: with some GPUs when using an OpenCL version of this code, it is necessary to make the parent .cl file (that includes this file) continuously different in order to force a re-interpret.
+// Any previous matching version will fall back to the corresponding cache  Otherwise no change will be observed.
+// Recommended is to add a letter or number to the end of a comment line in the ".cl" file each time this file is modified
+
 
 /***********************************************************************************************************/
 
@@ -291,7 +295,6 @@
 
 /***********************************************************************************************************/
 #define xy_preserving_odt(gain, half_way, gamma_boost, aces_to_device_mat, display_gamma) \
-/* odt_type P3D60_HDR */ \
 \
 /* input is rgbOut[3], output is rOut, gOut, bOut */ \
 \
@@ -318,7 +321,7 @@
 /* make shoulder using asymptotic function */ \
           norm_asymp = powf(odt_norm / (half_way + odt_norm), gamma_boost); \
 \
-          float asymp_scale = norm_asymp / (MAX(TINY, odt_norm)); \
+          float asymp_scale = MAX(0.0, norm_asymp / (MAX(TINY, odt_norm))); \
           rgbOut[0] = NORM_CORRECTION * asymp_scale * rgbOut[0]; \
           rgbOut[1] = NORM_CORRECTION * asymp_scale * rgbOut[1]; \
           rgbOut[2] = NORM_CORRECTION * asymp_scale * rgbOut[2]; \
@@ -331,14 +334,16 @@
 \
           MATMUL(RGB_VEC, aces_to_device_mat, rgbOut) \
 \
-/* Clip negative RGB P3 Values */ \
+/* Clip negative RGB P3 Values, note that this is an out-of-gamut clip, meaning that xy chromaticity is not preserved */ \
+/* this < 0 clip will also result in slope discontinuities.  It would be better to use a smooth function */ \
 	  if(RGB_VEC[0] < 0) RGB_VEC[0] = 0; \
 	  if(RGB_VEC[1] < 0) RGB_VEC[1] = 0; \
 	  if(RGB_VEC[2] < 0) RGB_VEC[2] = 0; \
-/* clip values above 1.0 */ \
-	  if(RGB_VEC[0] > 1.0) RGB_VEC[0] = 1.0; \
-	  if(RGB_VEC[1] > 1.0) RGB_VEC[1] = 1.0; \
-	  if(RGB_VEC[2] > 1.0) RGB_VEC[2] = 1.0; \
+/* clip values above 1.0, reducing the other primaries in relative proportion to the clip reduction to preserve xy chromaticity */ \
+/* this > 1.0 clip will result in slope discontinuities.  It would be better to use a smooth function */ \
+	  if(RGB_VEC[0] > 1.0) { RGB_VEC[1]=RGB_VEC[1]/RGB_VEC[0]; RGB_VEC[2]=RGB_VEC[2]/RGB_VEC[0]; RGB_VEC[0] = 1.0; } \
+	  if(RGB_VEC[1] > 1.0) { RGB_VEC[0]=RGB_VEC[0]/RGB_VEC[1]; RGB_VEC[2]=RGB_VEC[2]/RGB_VEC[1]; RGB_VEC[1] = 1.0;} \
+	  if(RGB_VEC[2] > 1.0) { RGB_VEC[0]=RGB_VEC[0]/RGB_VEC[2]; RGB_VEC[1]=RGB_VEC[1]/RGB_VEC[2]; RGB_VEC[2] = 1.0;} \
 \
           process_gamma(display_gamma) \
 }
