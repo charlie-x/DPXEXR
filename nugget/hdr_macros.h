@@ -78,7 +78,7 @@
 #define BRIGHT_HIGHLIGHTS_IN_TONE_CURVE /* if defined: use bright highlights, if not defined: use lower highlights */
 //#define FACES_HIGHLIGHTS /* if defined: desaturate highlights for faces, if not defined: more color saturation in bright colors (does not apply to BYPASS_LMT nor GAMMA_AND_MAT) */
 
-//#define RADIOMETRIC_ODTS /* RGB ratio-preserving ODTs (chromaticity preserving) */
+#define RADIOMETRIC_ODTS /* RGB ratio-preserving ODTs (chromaticity preserving) */
 //#define PQ_GAMMA /* use PQ gamma HDR instead of gamma exponent */
 
 //***** NOTE: with some GPUs when using an OpenCL version of this code, it is necessary to make the parent .cl file (that includes this file) continuously different in order to force a re-interpret.
@@ -227,14 +227,14 @@
 #define LARGER_TINY 1e-9
 
 /* HDR Parameters ********************************************************************************************************/
-#define GAMMA_BOOST_HDR 1.07 /* compensate for asymptotic function */
+#define GAMMA_BOOST_HDR 1.07 /* compensate for asymptotic function, should not use values below 1. */
 #define OFF_DIAG_HDR -.005 /* very sensitive, negative numbers increase color saturation, positive numbers desaturate */
 #define HALF_WAY_HDR 2.0 /* point at which asymptotic function for highlights goes to 1/2 */
 #define HDR_GAIN .41 /* scale factor, adjust depending on the dynamic range of the display/projector, and the value of the gamma boost above */
 
 
 /* MDR Parameters ********************************************************************************************************/
-#define GAMMA_BOOST_MDR 1.045 /* compensate for asymptotic function */
+#define GAMMA_BOOST_MDR 1.045 /* compensate for asymptotic function, should not use values below 1.0 */
 #define OFF_DIAG_MDR -.02 /* very sensitive, negative numbers increase color saturation, positive numbers desaturate */
 #define HALF_WAY_MDR 1.4 /* point at which asymptotic function for highlights goes to 1/2 */
 #define MDR_GAIN .7 /* scale factor, adjust depending on the dynamic range of the display/projector, and the value of the gamma boost above */
@@ -290,11 +290,19 @@
 
 #ifdef RADIOMETRIC_ODTS
 
+/* a radiometric proportion of 1.0 is fully RGB-relative-ratio preserving, and thus is chromaticity preserving */
+/* a radiometric proportion of 0.0 fully desaturates bright colors */
+#define MDR_RADIOMETRIC_PROPORTION 0.6 /* darker displays can have more color saturation in bright colors */
+#define HDR_RADIOMETRIC_PROPORTION 0.4 /* brighter displays appear more "colorful" (the Hunt effect), and thus bright colors can be somewhat less saturated */
 
-#define NORM_CORRECTION  .9 /* found empirically, scale factor corresponding to inverse of 1.111, the practical norm maximum */
+
+#define ROOM_BRIGHTENING .5 /* a room_brightening of 0.0 is for dark surround viewing, 1.0 is for viewing in a bright room (applied to radiometric portion) */
+
+//#define NORM_CORRECTION  .9 /* found empirically, scale factor corresponding to inverse of 1.111, the practical norm maximum */
 
 /***********************************************************************************************************/
-#define xy_preserving_odt(gain, half_way, gamma_boost, aces_to_device_mat, display_gamma) \
+#define xy_preserving_odt(gain, half_way, non_radiometric_asymp_gamma_boost, room_brightening, aces_to_device_mat, \
+ display_gamma, radiometric_proportion) \
 \
 /* input is rgbOut[3], output is rOut, gOut, bOut */ \
 \
@@ -308,6 +316,11 @@
           rgbOut[1] = gain * rgbOut[1]; \
           rgbOut[2] = gain * rgbOut[2]; \
 \
+          float rgb_value[3]; \
+          rgb_value[0] = rgbOut[0]; \
+          rgb_value[1] = rgbOut[1]; \
+          rgb_value[2] = rgbOut[2]; \
+\
 /* compute simple fifth-power over fourth-power norm (yellow weighted norm might be less noise-prone, but stay simple for now) */ \
           float odt_norm = (rgbOut[0] * rgbOut[0] * rgbOut[0] * rgbOut[0] * rgbOut[0] + \
                             rgbOut[1] * rgbOut[1] * rgbOut[1] * rgbOut[1] * rgbOut[1] + \
@@ -319,62 +332,111 @@
           float norm_asymp; \
 \
 /* make shoulder using asymptotic function */ \
-          norm_asymp = powf(odt_norm / (half_way + odt_norm), gamma_boost); \
+\
+          norm_asymp = odt_norm / (half_way + odt_norm); \
+\
+          norm_asymp = (1.0 - norm_asymp) *  norm_asymp /* low value behavior is just norm_asymp */ \
+                           +  norm_asymp  * (norm_asymp + (1.0 - norm_asymp) * room_brightening); /* lift asymp for low-mids and mids */ \
 \
           float asymp_scale = MAX(0.0, norm_asymp / (MAX(TINY, odt_norm))); \
-          rgbOut[0] = NORM_CORRECTION * asymp_scale * rgbOut[0]; \
-          rgbOut[1] = NORM_CORRECTION * asymp_scale * rgbOut[1]; \
-          rgbOut[2] = NORM_CORRECTION * asymp_scale * rgbOut[2]; \
 \
- if (rgbOut[0]>1.0) {/*printf("rgbOut[0]=%f, decrease NORM_CORRECTION a little\n", rgbOut[0]);*/ rgbOut[0] = 1.0; } \
- if (rgbOut[1]>1.0) {/*printf("rgbOut[1]=%f, decrease NORM_CORRECTION a little\n", rgbOut[1]);*/ rgbOut[1] = 1.0; } \
- if (rgbOut[2]>1.0) {/*printf("rgbOut[2]=%f, decrease NORM_CORRECTION a little\n", rgbOut[2]);*/ rgbOut[2] = 1.0; } \
+          rgbOut[0] = asymp_scale * rgbOut[0]; \
+          rgbOut[1] = asymp_scale * rgbOut[1]; \
+          rgbOut[2] = asymp_scale * rgbOut[2]; \
 \
-          float RGB_VEC[3]; \
+/* allow gain to go higher, will reduce below after matrix, uncomment following lines (not print statements if OpenCL) to re-instate 1.0 norm ceiling */ \
+/* rgbOut[0] = NORM_CORRECTION * rgbOut[0]; */ /* reduce gain based upon maximum norm value */ \
+/* rgbOut[1] = NORM_CORRECTION * rgbOut[1]; */ /* reduce gain based upon maximum norm value */ \
+/* rgbOut[2] = NORM_CORRECTION * rgbOut[2]; */ /* reduce gain based upon maximum norm value */ \
+/* if (rgbOut[0]>1.0) {*/ /*printf("rgbOut[0]=%f, decrease NORM_CORRECTION a little\n", rgbOut[0]);*/ /*rgbOut[0] = 1.0; }*/ \
+/* if (rgbOut[1]>1.0) {*/ /*printf("rgbOut[1]=%f, decrease NORM_CORRECTION a little\n", rgbOut[1]);*/ /*rgbOut[1] = 1.0; }*/ \
+/* if (rgbOut[2]>1.0) {*/ /*printf("rgbOut[2]=%f, decrease NORM_CORRECTION a little\n", rgbOut[2]);*/ /*rgbOut[2] = 1.0; }*/ \
+\
+           rgb_value[0] = powf(rgb_value[0] / (half_way + rgb_value[0]), non_radiometric_asymp_gamma_boost); \
+           rgb_value[1] = powf(rgb_value[1] / (half_way + rgb_value[1]), non_radiometric_asymp_gamma_boost); \
+           rgb_value[2] = powf(rgb_value[2] / (half_way + rgb_value[2]), non_radiometric_asymp_gamma_boost); \
+\
+\
+          float RGB_VEC[3], RGB_VECB[3]; \
 \
           MATMUL(RGB_VEC, aces_to_device_mat, rgbOut) \
 \
-/* Clip negative RGB P3 Values, note that this is an out-of-gamut clip, meaning that xy chromaticity is not preserved */ \
-/* this < 0 clip will also result in slope discontinuities.  It would be better to use a smooth function */ \
-	  if(RGB_VEC[0] < 0) RGB_VEC[0] = 0; \
-	  if(RGB_VEC[1] < 0) RGB_VEC[1] = 0; \
-	  if(RGB_VEC[2] < 0) RGB_VEC[2] = 0; \
+          MATMUL(RGB_VECB, aces_to_device_mat, rgb_value) \
+\
+/* blend radiometric chromaticity-preserving RGB_VEC and highlight-desaturationg RGB_VECB */ \
+          RGB_VEC[0] = radiometric_proportion * RGB_VEC[0] + (1.0 - radiometric_proportion) * RGB_VECB[0]; \
+          RGB_VEC[1] = radiometric_proportion * RGB_VEC[1] + (1.0 - radiometric_proportion) * RGB_VECB[1]; \
+          RGB_VEC[2] = radiometric_proportion * RGB_VEC[2] + (1.0 - radiometric_proportion) * RGB_VECB[2]; \
+\
 /* clip values above 1.0, reducing the other primaries in relative proportion to the clip reduction to preserve xy chromaticity */ \
 /* this > 1.0 clip will result in slope discontinuities.  It would be better to use a smooth function */ \
 	  if(RGB_VEC[0] > 1.0) { RGB_VEC[1]=RGB_VEC[1]/RGB_VEC[0]; RGB_VEC[2]=RGB_VEC[2]/RGB_VEC[0]; RGB_VEC[0] = 1.0; } \
 	  if(RGB_VEC[1] > 1.0) { RGB_VEC[0]=RGB_VEC[0]/RGB_VEC[1]; RGB_VEC[2]=RGB_VEC[2]/RGB_VEC[1]; RGB_VEC[1] = 1.0;} \
 	  if(RGB_VEC[2] > 1.0) { RGB_VEC[0]=RGB_VEC[0]/RGB_VEC[2]; RGB_VEC[1]=RGB_VEC[1]/RGB_VEC[2]; RGB_VEC[2] = 1.0;} \
 \
+/* Clip negative RGB P3 Values, note that this is an out-of-gamut clip, meaning that xy chromaticity is not preserved */ \
+/* this < 0 clip will also result in slope discontinuities.  It would be better to use a smooth function */ \
+	  if(RGB_VEC[0] < 0) RGB_VEC[0] = 0; \
+	  if(RGB_VEC[1] < 0) RGB_VEC[1] = 0; \
+	  if(RGB_VEC[2] < 0) RGB_VEC[2] = 0; \
+\
           process_gamma(display_gamma) \
 }
 
 /***********************************************************************************************************/
+
+/* P3_D60_RGB_FROM_ACES */
+#define LOAD_HDR_MATRIX \
+          float HDR_MAT[9] = \
+            { 1.980029295, -0.65352179,  -0.326511288, \
+             -0.184520312,  1.288293303, -0.103777815, \
+              0.008600852, -0.060073703,  1.05146064 };
+
+/* P3_D65_RGB_FROM_ACES (D60 to D65 via CAT02) */
+/* ACES_RGB_D60 to D55 using CAT02 to P3_D60, used as a stand-in for P3_D65_RGB_FROM_ACES (D60 to D65 via CAT02) */
+/*#define LOAD_HDR_MATRIX \
+          float HDR_MAT[9] = \
+            { 2.031237817, -.642345129, -.335945667, \
+              -.187511804, 1.294797249, -.103866103, \
+               .007895141, -.061318016,  .969850626 };*/
 
 #define process_odt_gd9_p3_d60_g2pt4_HDR \
 {/* odt_type P3D60_HDR */ \
 \
 /* input is rgbOut[3], output is rOut, gOut, bOut */ \
 \
-          float P3_D60_RGB_FROM_ACES_MAT[9] = \
-            { 1.980029295, -0.65352179,  -0.326511288, \
-             -0.184520312,  1.288293303, -0.103777815, \
-              0.008600852, -0.060073703,  1.05146064 }; \
+   LOAD_HDR_MATRIX \
 \
-   xy_preserving_odt(HDR_GAIN, HALF_WAY_HDR, GAMMA_BOOST_HDR, P3_D60_RGB_FROM_ACES_MAT, HDR_DISPLAY_GAMMA) \
+   xy_preserving_odt(HDR_GAIN, HALF_WAY_HDR, GAMMA_BOOST_HDR, ROOM_BRIGHTENING, HDR_MAT, HDR_DISPLAY_GAMMA, \
+    HDR_RADIOMETRIC_PROPORTION) \
 \
 }
+
+/***********************************************************************************************************/
+/* REC709_RGB_D60_AS_D65_FROM_ACES */
+#define LOAD_MDR_MATRIX \
+          float MDR_MAT[9] = \
+            { 2.5216353,  -1.136895218, -0.384904042, \
+             -0.275205678, 1.369705042, -0.094399363, \
+             -0.01593043, -0.147809266,  1.163803579 };
+
+
+/* REC709_RGB_D60_TO_D65_FROM_ACES (less magnitude in blue row) */
+/*#define LOAD_MDR_MATRIX \
+          float MDR_MAT[9] = \
+            { 2.44342, -1.06915, -0.37427, \
+             -0.26531,  1.30463, -0.08932, \
+             -0.01634, -0.14190,  1.03258 };*/
+
 
 #define process_odt_gd9_Rec709_g2pt4_MDR \
 {/* odt_type Rec709_MDR */ \
 \
 /* input is rgbOut[3] */ \
+   LOAD_MDR_MATRIX \
 \
-          float REC709_RGB_D60_AS_D65_FROM_ACES_MAT[9] = \
-            { 2.5216353,  -1.136895218, -0.384904042, \
-             -0.275205678, 1.369705042, -0.094399363, \
-             -0.01593043, -0.147809266,  1.163803579 }; \
-\
-   xy_preserving_odt(MDR_GAIN, HALF_WAY_HDR, GAMMA_BOOST_MDR, REC709_RGB_D60_AS_D65_FROM_ACES_MAT, MDR_DISPLAY_GAMMA) \
+   xy_preserving_odt(MDR_GAIN, HALF_WAY_HDR, GAMMA_BOOST_MDR, ROOM_BRIGHTENING, MDR_MAT, \
+    MDR_DISPLAY_GAMMA, MDR_RADIOMETRIC_PROPORTION) \
 \
 }
 

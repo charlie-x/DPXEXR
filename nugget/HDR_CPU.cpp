@@ -143,6 +143,7 @@ using namespace Imath; /* OpenExr */
 
 // globals:
 short odt_through_flag = 0; /* 0 = normal odt, 1 = through odt, 2 = through odt with 0.1 scaledown */
+float r_gain, g_gain, b_gain;
 
 // DPX file reader and writer (only writer is used by this SDK)
 /***************************************************************************************************************************************************/
@@ -947,9 +948,9 @@ short ans_ready;
 
   for(y=y0; y<y1; y++) {
     for(x=0; x<h_reso; x++) {
-      aces[0] = rrt_input[(0*v_reso + y) * h_reso + x];
-      aces[1] = rrt_input[(1*v_reso + y) * h_reso + x];
-      aces[2] = rrt_input[(2*v_reso + y) * h_reso + x];
+      aces[0] = r_gain * rrt_input[(0*v_reso + y) * h_reso + x];
+      aces[1] = g_gain * rrt_input[(1*v_reso + y) * h_reso + x];
+      aces[2] = b_gain * rrt_input[(2*v_reso + y) * h_reso + x];
 
       RRT_GD10(aces, rgbOut)
 
@@ -995,7 +996,6 @@ short h_reso, v_reso, ans_ready;
 short open_exr_vs_dpx_out = 0; /* 0 is open_exr, 1 is dpx */
 float s, t, tmp;
 int ii;
-float expvalue;
 
 #ifdef MULTIPLE_THREADS
 
@@ -1010,7 +1010,7 @@ float expvalue;
 #endif /* MULTIPLE_THREADS */
 
 if (argc < 6) {
-  printf(" usage: %s infiles, outfiles, first_frame, last_frame, odt_type(1=GD10_Rec709_MDR, 2=GD10_p3_d60_HDR)\n", argv[0]);
+  printf(" usage: %s infiles, outfiles, first_frame, last_frame, device_type(1=GD10_Rec709_MDR, 2=GD10_p3_d60_HDR), r_gain, g_gain, b_gain\n", argv[0]);
   exit(1);
 }
 
@@ -1019,7 +1019,22 @@ if (argc < 6) {
 
  odt_type = atoi(argv[5]);
 
- printf(" processing frames %d to %d with odt_type = %d\n", first, last, odt_type);
+short argnm = 6;
+
+   if (argc >= (argnm + 3)) {
+     r_gain = atof(argv[argnm]);
+     g_gain = atof(argv[argnm+1]);
+     b_gain = atof(argv[argnm+2]);
+   } else {
+     r_gain = 1.0; g_gain = 1.0; b_gain = 1.0;
+   }
+
+   printf(" r_gain = %f g_gain = %f b_gain = %f\n", r_gain, g_gain, b_gain);
+
+   argnm = argnm + 3;
+
+
+ printf(" processing frames %d to %d with device_type = %d\n", first, last, odt_type);
 
 #ifdef MULTIPLE_THREADS
   max_threads = MAXIMUM_NUMBER_OF_THREADS;
