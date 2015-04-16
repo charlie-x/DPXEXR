@@ -62,6 +62,11 @@
 //
 // Further developed in collaboration with the ASC Technology Committee, beginning March 2015
 //
+// Note: patents may apply to ideas contained herein.
+// Such patents may include patents issued and/or pending by Gary Demos.
+// No patent licenses are granted nor implied due to open availability of this code.
+//
+//
 //////////////////////////////////////////////////////////////////////////////
 
 
@@ -293,10 +298,10 @@
 /* a radiometric proportion of 1.0 is fully RGB-relative-ratio preserving, and thus is chromaticity preserving */
 /* a radiometric proportion of 0.0 fully desaturates bright colors */
 #define MDR_RADIOMETRIC_PROPORTION 0.6 /* darker displays can have more color saturation in bright colors */
-#define HDR_RADIOMETRIC_PROPORTION 0.4 /* brighter displays appear more "colorful" (the Hunt effect), and thus bright colors can be somewhat less saturated */
+#define HDR_RADIOMETRIC_PROPORTION 1.0//0.4 /* brighter displays appear more "colorful" (the Hunt effect), and thus bright colors can be somewhat less saturated */
 
 
-#define ROOM_BRIGHTENING .5 /* a room_brightening of 0.0 is for dark surround viewing, 1.0 is for viewing in a bright room (applied to radiometric portion) */
+#define ROOM_BRIGHTENING 0.0 /* a room_brightening of 0.0 is for dark surround viewing, 1.0 is for viewing in a bright room (applied to radiometric portion) */
 
 //#define NORM_CORRECTION  .9 /* found empirically, scale factor corresponding to inverse of 1.111, the practical norm maximum */
 
@@ -392,13 +397,28 @@
              -0.184520312,  1.288293303, -0.103777815, \
               0.008600852, -0.060073703,  1.05146064 };
 
-/* P3_D65_RGB_FROM_ACES (D60 to D65 via CAT02) */
-/* ACES_RGB_D60 to D55 using CAT02 to P3_D60, used as a stand-in for P3_D65_RGB_FROM_ACES (D60 to D65 via CAT02) */
+/* P3_D65_RGB_FROM_ACES */
+/* ACES_RGB_D60 to XYZ, then XYZ to P3_D65 */
 /*#define LOAD_HDR_MATRIX \
           float HDR_MAT[9] = \
-            { 2.031237817, -.642345129, -.335945667, \
-              -.187511804, 1.294797249, -.103866103, \
-               .007895141, -.061318016,  .969850626 };*/
+           { 2.054824895,   -.678201524,  -.338848384, \
+             -.183835832,  1.283509252,  -.103389667, \
+              .007944253,  -.055466159,   .970827554 }; */
+
+/* ACES_RGB_D60_TO_BT2020_D60 */
+/*#define LOAD_HDR_MATRIX \
+          float HDR_MAT[9] = \
+           { 1.47728,       -.252896,	   -.224381, \
+             -.0792524,    1.18028,      -.101031, \
+              .00226209,   -.0336893,     1.03143 }; */
+
+/* ACES_RGB_D60_TO_BT2020_D65 */
+/*#define LOAD_HDR_MATRIX \
+          float HDR_MAT[9] = \
+            { 1.512860179,   -.258987564,  -.229785733, \
+              -.079036555,  1.177065932,  -.100755613, \
+                .002091278,  -.031144101,   .953504037 };*/
+
 
 #define process_odt_gd9_p3_d60_g2pt4_HDR \
 {/* odt_type P3D60_HDR */ \
@@ -421,12 +441,12 @@
              -0.01593043, -0.147809266,  1.163803579 };
 
 
-/* REC709_RGB_D60_TO_D65_FROM_ACES (less magnitude in blue row) */
+/* ACES_RGB_D60_TO_REC709_D65 (less magnitude in blue row) */
 /*#define LOAD_MDR_MATRIX \
           float MDR_MAT[9] = \
-            { 2.44342, -1.06915, -0.37427, \
-             -0.26531,  1.30463, -0.08932, \
-             -0.01634, -0.14190,  1.03258 };*/
+            { 2.55839,      -1.11947,      -.391812, \
+              -.277986,     1.36602,      -.0934873, \
+              -.0171707,    -.148529,     1.08102 };*/
 
 
 #define process_odt_gd9_Rec709_g2pt4_MDR \
