@@ -84,7 +84,7 @@
 //#define FACES_HIGHLIGHTS /* if defined: desaturate highlights for faces, if not defined: more color saturation in bright colors (does not apply to BYPASS_LMT nor GAMMA_AND_MAT) */
 
 #define RADIOMETRIC_ODTS /* RGB ratio-preserving ODTs (chromaticity preserving) */
-//#define PQ_GAMMA /* use PQ gamma HDR instead of gamma exponent */
+//#define PQ_TRANSFER_FUNCTION /* use PQ transfer function HDR instead of gamma exponent */
 
 //***** NOTE: with some GPUs when using an OpenCL version of this code, it is necessary to make the parent .cl file (that includes this file) continuously different in order to force a re-interpret.
 // Any previous matching version will fall back to the corresponding cache  Otherwise no change will be observed.
@@ -244,31 +244,52 @@
 #define HALF_WAY_MDR 1.4 /* point at which asymptotic function for highlights goes to 1/2 */
 #define MDR_GAIN .7 /* scale factor, adjust depending on the dynamic range of the display/projector, and the value of the gamma boost above */
 
-#ifdef PQ_GAMMA
+#ifdef PQ_TRANSFER_FUNCTION
 /* PQ 2084 */
-/* Base functions from SMPTE ST 2084-2014, aka PQ_gamma Curve */
+/* Base functions from SMPTE ST 2084-2014, aka PQ_transfer_function */
+
+#define PQ_In_SCALE 1103.407
+
+#if 0
 /* Cribbed from one of the ACES 1.0 HDR ODT's */
+/* Converts from linear cd/m^2 (assuming 10 = 0.1 = outputLAD to the non-linear perceptually quantized space */
+/* Note that this is in float, and assumes normalization from 0 - 1 */
+/* (0 - pq_C for linear) and does not handle the integer coding in the Annex sections of SMPTE ST 2084-2014 */
+/* Note that this does NOT handle any of the signal range considerations from SMPTE 2084 - this returns full range (0 - 1) */
 
 #define pq_m1 0.1593017578125 /* ( 2610.0 / 4096.0 ) / 4.0 */
 #define pq_m2 78.84375 /* ( 2523.0 / 4096.0 ) * 128.0 */
 #define pq_c1 0.8359375 /* 3424.0 / 4096.0 or pq_c3 - pq_c2 + 1.0 */
 #define pq_c2 18.8515625 /* ( 2413.0 / 4096.0 ) * 32.0 */
 #define pq_c3 18.6875 /* ( 2392.0 / 4096.0 ) * 32.0 */
-#define pq_C 100.0 /* 100.0 / 10000.0 */
+#define pq_C 10000.0
 
-/* Converts from linear cd/m^2 (assuming 10 = 0.1 = outputLAD to the non-linear perceptually quantized space */
-/* Note that this is in float, and assumes normalization from 0 - 1 */
-/* (0 - pq_C for linear) and does not handle the integer coding in the Annex sections of SMPTE ST 2084-2014 */
-/* Note that this does NOT handle any of the signal range considerations from SMPTE 2084 - this returns full range (0 - 1) */
 
  #define APPLY_GAMMA(PQ_Out, PQ_In) \
  { \
-   float L = PQ_In / pq_C; \
+   float L = PQ_In * PQ_In_SCALE / pq_C; \
    float Lm = powf( L, pq_m1 ); \
    float N = ( pq_c1 + pq_c2 * Lm ) / ( 1.0 + pq_c3 * Lm ); \
    PQ_Out = powf( N, pq_m2 ); \
    if (PQ_Out > 1.0) { PQ_Out = 1.0; } \
  }
+
+#else /* use Bill Mandel's excel spreadsheet formula */
+
+// Bill Mandel's excel formulae:
+//=POWER((0.8359375+18.8515625*POWER(($C$15/10000),0.1593017578))/(1+18.6875*POWER(($C$15/10000),0.1593017578)),78.84375)
+// for 1000nits, this yields a value of .75183
+
+//=10000*POWER(MAX(POWER($D$13,1/78.84375)-0.8359375,0)/(18.8515625-18.6875*POWER($D$13,1/78.84375)),1/0.1593017578)
+// for value .76256, this yields 1103.407 nits
+
+
+ #define APPLY_GAMMA(PQ_Out, PQ_In) \
+ { \
+   PQ_Out = powf((0.8359375+18.8515625*powf((PQ_In_SCALE * PQ_In/10000.0),0.1593017578))/(1.0+18.6875*powf((PQ_In_SCALE*PQ_In/10000.0),0.1593017578)),78.84375); \
+ }
+
+#endif /* 0 vs 1 */
 
  #define process_gamma(ignore_the_argument) \
  { \
@@ -290,7 +311,7 @@
      bOut = powf(RGB_VEC[2], 1.0/gamma_exponent_for_display); \
  }
 
-#endif /* PQ_GAMMA or not */
+#endif /* PQ_TRANSFER_FUNCTION or not */
 
 
 #ifdef RADIOMETRIC_ODTS
