@@ -72,11 +72,11 @@
 
 /***********************************************************************************************************/
 /* select one of the following: */
-#define BYPASS_LMT /* this selects solely the rendering nugget */
+//define BYPASS_LMT /* this selects solely the rendering nugget */
 //#define SIMPLE_LMT
 //#define GAMMA_AND_MAT
 //#define MODERATE_LMT
-//#define FULL_LMT
+#define FULL_LMT
 //#define DOUBLE_LMT
 
 
@@ -84,7 +84,7 @@
 //#define FACES_HIGHLIGHTS /* if defined: desaturate highlights for faces, if not defined: more color saturation in bright colors (does not apply to BYPASS_LMT nor GAMMA_AND_MAT) */
 
 #define RADIOMETRIC_ODTS /* RGB ratio-preserving ODTs (chromaticity preserving) */
-//#define PQ_TRANSFER_FUNCTION /* use PQ transfer function HDR instead of gamma exponent */
+#define PQ_TRANSFER_FUNCTION /* use PQ transfer function HDR instead of gamma exponent */
 
 //***** NOTE: with some GPUs when using an OpenCL version of this code, it is necessary to make the parent .cl file (that includes this file) continuously different in order to force a re-interpret.
 // Any previous matching version will fall back to the corresponding cache  Otherwise no change will be observed.
