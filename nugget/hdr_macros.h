@@ -72,11 +72,11 @@
 
 /***********************************************************************************************************/
 /* select one of the following: */
-#define BYPASS_LMT /* This selects solely the rendering nugget.  For radiometric processing, select this and set the HDR/MDR RADIOMETRIC_PROPORTION to 1.0. */
+//#define BYPASS_LMT /* This selects solely the rendering nugget.  For radiometric processing, select this and set the HDR/MDR RADIOMETRIC_PROPORTION to 1.0. */
 //#define SIMPLE_LMT
 //#define GAMMA_AND_MAT
 //#define MODERATE_LMT
-//#define FULL_LMT
+#define FULL_LMT
 //#define DOUBLE_LMT
 
 /* the typical setting for scenes with prominent faces is to turn off bright highlights, and turn on faces highlight desaturation */
@@ -88,12 +88,12 @@
 /* a radiometric proportion of 0.0 fully desaturates bright colors */
 #define MDR_RADIOMETRIC_PROPORTION 1.0 /* Set to 1.0 for radiometric MDR.  Darker displays can have more color saturation in bright colors */
 #define HDR_RADIOMETRIC_PROPORTION 1.0 /* Set to 1.0 for radiometric HDR.  Brighter displays appear more "colorful" (the Hunt effect), and thus bright colors can be somewhat less saturated */
-#define ROOM_BRIGHTENING 0.2 /* a room_brightening of 0.0 is for dark surround viewing, 1.0 is for viewing in a bright room (applied only to radiometric portion) */
+#define ROOM_BRIGHTENING 0.0 /* a room_brightening of 0.0 is for dark surround viewing, 1.0 is for viewing in a bright room (applied only to radiometric portion) */
 
-//#define PQ_TRANSFER_FUNCTION /* use PQ transfer function HDR instead of gamma exponent */
+#define PQ_TRANSFER_FUNCTION /* use PQ transfer function HDR instead of gamma exponent */
 
 #ifdef PQ_TRANSFER_FUNCTION
- #define PQ_In_SCALE 1100.0 /* This should be set to the actual display maximum, at (or a little below) display max clip.  Note the asymptote will map to this value in the high limit */
+ #define PQ_In_SCALE 800.0 /* This should be set to the actual display maximum, at (or a little below) display max clip.  Note the asymptote will map to this value in the high limit */
 #endif /* PQ_TRANSFER_FUNCTION */
 
 //***** NOTE: with some GPUs when using an OpenCL version of this code, it is necessary to make the parent .cl file (that includes this file) continuously different in order to force a re-interpret (the "stale cache" problem).
