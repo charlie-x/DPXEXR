@@ -72,21 +72,31 @@
 
 /***********************************************************************************************************/
 /* select one of the following: */
-//define BYPASS_LMT /* this selects solely the rendering nugget */
+#define BYPASS_LMT /* This selects solely the rendering nugget.  For radiometric processing, select this and set the HDR/MDR RADIOMETRIC_PROPORTION to 1.0. */
 //#define SIMPLE_LMT
 //#define GAMMA_AND_MAT
 //#define MODERATE_LMT
-#define FULL_LMT
+//#define FULL_LMT
 //#define DOUBLE_LMT
 
-
+/* the typical setting for scenes with prominent faces is to turn off bright highlights, and turn on faces highlight desaturation */
+/* the typical setting for scenes without prominent faces is to turn on bright highlights, and turn off faces highlight desaturation */
 #define BRIGHT_HIGHLIGHTS_IN_TONE_CURVE /* if defined: use bright highlights, if not defined: use lower highlights */
 //#define FACES_HIGHLIGHTS /* if defined: desaturate highlights for faces, if not defined: more color saturation in bright colors (does not apply to BYPASS_LMT nor GAMMA_AND_MAT) */
 
-#define RADIOMETRIC_ODTS /* RGB ratio-preserving ODTs (chromaticity preserving) */
-#define PQ_TRANSFER_FUNCTION /* use PQ transfer function HDR instead of gamma exponent */
+/* a radiometric proportion of 1.0 is fully RGB-relative-ratio preserving, and thus is chromaticity preserving */
+/* a radiometric proportion of 0.0 fully desaturates bright colors */
+#define MDR_RADIOMETRIC_PROPORTION 1.0 /* Set to 1.0 for radiometric MDR.  Darker displays can have more color saturation in bright colors */
+#define HDR_RADIOMETRIC_PROPORTION 1.0 /* Set to 1.0 for radiometric HDR.  Brighter displays appear more "colorful" (the Hunt effect), and thus bright colors can be somewhat less saturated */
+#define ROOM_BRIGHTENING 0.2 /* a room_brightening of 0.0 is for dark surround viewing, 1.0 is for viewing in a bright room (applied only to radiometric portion) */
 
-//***** NOTE: with some GPUs when using an OpenCL version of this code, it is necessary to make the parent .cl file (that includes this file) continuously different in order to force a re-interpret.
+//#define PQ_TRANSFER_FUNCTION /* use PQ transfer function HDR instead of gamma exponent */
+
+#ifdef PQ_TRANSFER_FUNCTION
+ #define PQ_In_SCALE 1100.0 /* This should be set to the actual display maximum, at (or a little below) display max clip.  Note the asymptote will map to this value in the high limit */
+#endif /* PQ_TRANSFER_FUNCTION */
+
+//***** NOTE: with some GPUs when using an OpenCL version of this code, it is necessary to make the parent .cl file (that includes this file) continuously different in order to force a re-interpret (the "stale cache" problem).
 // Any previous matching version will fall back to the corresponding cache  Otherwise no change will be observed.
 // Recommended is to add a letter or number to the end of a comment line in the ".cl" file each time this file is modified
 
@@ -233,48 +243,17 @@
 
 /* HDR Parameters ********************************************************************************************************/
 #define GAMMA_BOOST_HDR 1.07 /* compensate for asymptotic function, should not use values below 1. */
-#define OFF_DIAG_HDR -.005 /* very sensitive, negative numbers increase color saturation, positive numbers desaturate */
 #define HALF_WAY_HDR 2.0 /* point at which asymptotic function for highlights goes to 1/2 */
 #define HDR_GAIN .41 /* scale factor, adjust depending on the dynamic range of the display/projector, and the value of the gamma boost above */
 
-
 /* MDR Parameters ********************************************************************************************************/
 #define GAMMA_BOOST_MDR 1.045 /* compensate for asymptotic function, should not use values below 1.0 */
-#define OFF_DIAG_MDR -.02 /* very sensitive, negative numbers increase color saturation, positive numbers desaturate */
 #define HALF_WAY_MDR 1.4 /* point at which asymptotic function for highlights goes to 1/2 */
 #define MDR_GAIN .7 /* scale factor, adjust depending on the dynamic range of the display/projector, and the value of the gamma boost above */
 
 #ifdef PQ_TRANSFER_FUNCTION
 /* PQ 2084 */
 /* Base functions from SMPTE ST 2084-2014, aka PQ_transfer_function */
-
-#define PQ_In_SCALE 1103.407
-
-#if 0
-/* Cribbed from one of the ACES 1.0 HDR ODT's */
-/* Converts from linear cd/m^2 (assuming 10 = 0.1 = outputLAD to the non-linear perceptually quantized space */
-/* Note that this is in float, and assumes normalization from 0 - 1 */
-/* (0 - pq_C for linear) and does not handle the integer coding in the Annex sections of SMPTE ST 2084-2014 */
-/* Note that this does NOT handle any of the signal range considerations from SMPTE 2084 - this returns full range (0 - 1) */
-
-#define pq_m1 0.1593017578125 /* ( 2610.0 / 4096.0 ) / 4.0 */
-#define pq_m2 78.84375 /* ( 2523.0 / 4096.0 ) * 128.0 */
-#define pq_c1 0.8359375 /* 3424.0 / 4096.0 or pq_c3 - pq_c2 + 1.0 */
-#define pq_c2 18.8515625 /* ( 2413.0 / 4096.0 ) * 32.0 */
-#define pq_c3 18.6875 /* ( 2392.0 / 4096.0 ) * 32.0 */
-#define pq_C 10000.0
-
-
- #define APPLY_GAMMA(PQ_Out, PQ_In) \
- { \
-   float L = PQ_In * PQ_In_SCALE / pq_C; \
-   float Lm = powf( L, pq_m1 ); \
-   float N = ( pq_c1 + pq_c2 * Lm ) / ( 1.0 + pq_c3 * Lm ); \
-   PQ_Out = powf( N, pq_m2 ); \
-   if (PQ_Out > 1.0) { PQ_Out = 1.0; } \
- }
-
-#else /* use Bill Mandel's excel spreadsheet formula */
 
 // Bill Mandel's excel formulae:
 //=POWER((0.8359375+18.8515625*POWER(($C$15/10000),0.1593017578))/(1+18.6875*POWER(($C$15/10000),0.1593017578)),78.84375)
@@ -288,8 +267,6 @@
  { \
    PQ_Out = powf((0.8359375+18.8515625*powf((PQ_In_SCALE * PQ_In/10000.0),0.1593017578))/(1.0+18.6875*powf((PQ_In_SCALE*PQ_In/10000.0),0.1593017578)),78.84375); \
  }
-
-#endif /* 0 vs 1 */
 
  #define process_gamma(ignore_the_argument) \
  { \
@@ -313,16 +290,6 @@
 
 #endif /* PQ_TRANSFER_FUNCTION or not */
 
-
-#ifdef RADIOMETRIC_ODTS
-
-/* a radiometric proportion of 1.0 is fully RGB-relative-ratio preserving, and thus is chromaticity preserving */
-/* a radiometric proportion of 0.0 fully desaturates bright colors */
-#define MDR_RADIOMETRIC_PROPORTION 0.6 /* darker displays can have more color saturation in bright colors */
-#define HDR_RADIOMETRIC_PROPORTION 1.0//0.4 /* brighter displays appear more "colorful" (the Hunt effect), and thus bright colors can be somewhat less saturated */
-
-
-#define ROOM_BRIGHTENING 0.0 /* a room_brightening of 0.0 is for dark surround viewing, 1.0 is for viewing in a bright room (applied to radiometric portion) */
 
 //#define NORM_CORRECTION  .9 /* found empirically, scale factor corresponding to inverse of 1.111, the practical norm maximum */
 
@@ -481,168 +448,6 @@
 \
 }
 
-
-#else /* not RADIOMETRIC_ODTS */
-/***********************************************************************************************************/
-#define process_odt_gd9_p3_d60_g2pt4_HDR \
-{ /* odt_type P3D60_HDR */ \
-\
-/* boost the saturation a little */ \
-\
-          float SAT_MTX[9]; \
-          float rgb_output[3]; \
-          float off_diag_hdr_amount = HDR_GAIN *        OFF_DIAG_HDR; \
-          float     diag_hdr_amount = HDR_GAIN * (1.0 - OFF_DIAG_HDR - OFF_DIAG_HDR); \
-          SAT_MTX[0] = SAT_MTX[4] = SAT_MTX[8] = diag_hdr_amount; \
-          SAT_MTX[1] = SAT_MTX[2] = SAT_MTX[3] = SAT_MTX[5] = SAT_MTX[6] = SAT_MTX[7] = off_diag_hdr_amount; \
-\
-          COLOR_MATRIX_TIMES_VEC(rgb_output, SAT_MTX, rgbOut) \
-\
-          rgbOut[0] = rgb_output[0]; /* can copy back once matrix transform is complete */ \
-          rgbOut[1] = rgb_output[1]; \
-          rgbOut[2] = rgb_output[2]; \
-\
-          float sign_of_rgbOut[3]; \
-          for (i=0; i<3; i++) { \
-            if (rgbOut[i] >= 0.0) { \
-              sign_of_rgbOut[i] = 1.0; \
-            } else { /* negative */ \
-              sign_of_rgbOut[i] = -1.0; \
-            } /* positive or not */ \
-/* make shoulder using asymptotic function */ \
-            rgbOut[i] = sign_of_rgbOut[i] * powf(sign_of_rgbOut[i] * rgbOut[i] / MAX(TINY, (HALF_WAY_HDR + (sign_of_rgbOut[i] * rgbOut[i]))), GAMMA_BOOST_HDR); \
-          } /* i */ \
-\
-          float RGB_VEC[3]; \
-/* ACES to XYZ */ \
-/*        float XYZ_FROM_ACES_MAT[9], RGB_FROM_XYZ_MAT[9]; \
-          XYZ_FROM_ACES_MAT[0] =  0.9525523959; \
-          XYZ_FROM_ACES_MAT[1] =  0.0000000000; \
-          XYZ_FROM_ACES_MAT[2] =  0.0000936786; \
-          XYZ_FROM_ACES_MAT[3] =  0.3439664498; \
-          XYZ_FROM_ACES_MAT[4] =  0.7281660966; \
-          XYZ_FROM_ACES_MAT[5] = -0.0721325464; \
-          XYZ_FROM_ACES_MAT[6] =  0.0000000000; \
-          XYZ_FROM_ACES_MAT[7] =  0.0000000000; \
-          XYZ_FROM_ACES_MAT[8] =  1.0088251844; \
-\
-          float XYZ_VEC[3]; \
-          MATMUL(XYZ_VEC, XYZ_FROM_ACES_MAT, rgbOut) */\
-\
-/* matrix from XYZ to p3_D60 whitepoint */ \
-/*          RGB_FROM_XYZ_MAT[0] = 2.40274; \
-          RGB_FROM_XYZ_MAT[1] = -.89749; \
-          RGB_FROM_XYZ_MAT[2] = -.38805; \
-          RGB_FROM_XYZ_MAT[3] = -.83258; \
-          RGB_FROM_XYZ_MAT[4] = 1.76923; \
-          RGB_FROM_XYZ_MAT[5] =  .02371; \
-          RGB_FROM_XYZ_MAT[6] =  .03882; \
-          RGB_FROM_XYZ_MAT[7] = -.08250; \
-          RGB_FROM_XYZ_MAT[8] = 1.03636; \
-\
-          MATMUL(RGB_VEC, RGB_FROM_XYZ_MAT, XYZ_VEC) */ \
-\
-/* net ACES to P3_D60 matrix by concatenating both matrices above: */ \
-          float P3_D60_RGB_FROM_ACES_MAT[9]; \
-          P3_D60_RGB_FROM_ACES_MAT[0] = 1.980029295; \
-          P3_D60_RGB_FROM_ACES_MAT[1] = -0.65352179; \
-          P3_D60_RGB_FROM_ACES_MAT[2] = -0.326511288; \
-          P3_D60_RGB_FROM_ACES_MAT[3] = -0.184520312; \
-          P3_D60_RGB_FROM_ACES_MAT[4] = 1.288293303; \
-          P3_D60_RGB_FROM_ACES_MAT[5] = -0.103777815; \
-          P3_D60_RGB_FROM_ACES_MAT[6] = 0.008600852; \
-          P3_D60_RGB_FROM_ACES_MAT[7] = -0.060073703; \
-          P3_D60_RGB_FROM_ACES_MAT[8] = 1.05146064; \
-\
-          MATMUL(RGB_VEC, P3_D60_RGB_FROM_ACES_MAT, rgbOut) \
-\
-/* Clip negative RGB P3 Values */ \
-	  if(RGB_VEC[0] < 0) RGB_VEC[0] = 0; \
-	  if(RGB_VEC[1] < 0) RGB_VEC[1] = 0; \
-	  if(RGB_VEC[2] < 0) RGB_VEC[2] = 0; \
-/* clip values above 1.0 */ \
-	  if(RGB_VEC[0] > 1.0) RGB_VEC[0] = 1.0; \
-	  if(RGB_VEC[1] > 1.0) RGB_VEC[1] = 1.0; \
-	  if(RGB_VEC[2] > 1.0) RGB_VEC[2] = 1.0; \
-\
-          process_gamma(HDR_DISPLAY_GAMMA) \
-}
-
-/***********************************************************************************************************/
-
-#define process_odt_gd9_Rec709_g2pt4_MDR \
-{ /* odt_type Rec709_MDR */ \
-\
-/* boost the saturation a little */ \
-\
-          float SAT_MTX[9]; \
-          float rgb_output[3]; \
-          float off_diag_mdr_amount = MDR_GAIN *        OFF_DIAG_MDR; \
-          float     diag_mdr_amount = MDR_GAIN * (1.0 - OFF_DIAG_MDR - OFF_DIAG_MDR); \
-          SAT_MTX[0] = SAT_MTX[4] = SAT_MTX[8] = diag_mdr_amount; \
-          SAT_MTX[1] = SAT_MTX[2] = SAT_MTX[3] = SAT_MTX[5] = SAT_MTX[6] = SAT_MTX[7] = off_diag_mdr_amount; \
-\
-          COLOR_MATRIX_TIMES_VEC(rgb_output, SAT_MTX, rgbOut) \
-\
-          rgbOut[0] = rgb_output[0]; /* can copy back once matrix transform is complete */ \
-          rgbOut[1] = rgb_output[1]; \
-          rgbOut[2] = rgb_output[2]; \
-\
-          float sign_of_rgbOut[3]; \
-          for (i=0; i<3; i++) { \
-            if (rgbOut[i] >= 0.0) { \
-              sign_of_rgbOut[i] = 1.0; \
-            } else { /* negative */ \
-              sign_of_rgbOut[i] = -1.0; \
-            } /* positive or not */ \
-/* make shoulder using asymptotic function */ \
-            rgbOut[i] = sign_of_rgbOut[i] * powf(sign_of_rgbOut[i] * rgbOut[i] / MAX(TINY, (HALF_WAY_MDR + (sign_of_rgbOut[i] * rgbOut[i]))), GAMMA_BOOST_MDR); \
-          } /* i */ \
-\
-          float RGB_VEC[3]; \
-\
-/* ACES_RGB_D60 to Rec709_D60_as_D65: */ \
-/* note that all of the rows of this matrix sum to 1.0, such that ACES=OCES=r=g=b=D60 is turned into Rec709 r=g=b=D65 */ \
-\
-          float RGB_FROM_ACES_MAT[9]; \
-          RGB_FROM_ACES_MAT[0] =  2.5216353; \
-          RGB_FROM_ACES_MAT[1] = -1.136895218; \
-          RGB_FROM_ACES_MAT[2] = -0.384904042; \
-          RGB_FROM_ACES_MAT[3] = -0.275205678; \
-          RGB_FROM_ACES_MAT[4] =  1.369705042; \
-          RGB_FROM_ACES_MAT[5] = -0.094399363; \
-          RGB_FROM_ACES_MAT[6] = -0.01593043; \
-          RGB_FROM_ACES_MAT[7] = -0.147809266; \
-          RGB_FROM_ACES_MAT[8] =  1.163803579; \
-          MATMUL(RGB_VEC, RGB_FROM_ACES_MAT, rgbOut) \
-\
-/* ACES_RGB_D60 to between P3_D60 and Rec709_D60_as_D65: */ \
-/* note that all of the rows of this matrix sum to 1.0, such that ACES=OCES=r=g=b=D60 is turned into r=g=b=D65 */ \
-/*          float RGB_FROM_ACES_MAT[9]; \
-          RGB_FROM_ACES_MAT[0] =  2.25; \
-          RGB_FROM_ACES_MAT[1] = -.95; \
-          RGB_FROM_ACES_MAT[2] = -.3; \
-          RGB_FROM_ACES_MAT[3] = -0.23; \
-          RGB_FROM_ACES_MAT[4] =  1.33; \
-          RGB_FROM_ACES_MAT[5] = -0.1; \
-          RGB_FROM_ACES_MAT[6] = -0.01; \
-          RGB_FROM_ACES_MAT[7] = -0.09; \
-          RGB_FROM_ACES_MAT[8] =  1.10; \
-          MATMUL(RGB_VEC, RGB_FROM_ACES_MAT, rgbOut) */\
-\
-/* Clip negative RGB Values */ \
-	  if(RGB_VEC[0] < 0) RGB_VEC[0] = 0; \
-	  if(RGB_VEC[1] < 0) RGB_VEC[1] = 0; \
-	  if(RGB_VEC[2] < 0) RGB_VEC[2] = 0; \
-/* clip values above 1.0 */ \
-	  if(RGB_VEC[0] > 1.0) RGB_VEC[0] = 1.0; \
-	  if(RGB_VEC[1] > 1.0) RGB_VEC[1] = 1.0; \
-	  if(RGB_VEC[2] > 1.0) RGB_VEC[2] = 1.0; \
-\
-          process_gamma(MDR_DISPLAY_GAMMA) \
-}
-
-#endif /* RADIOMETRIC_ODTS or not */
 /***********************************************************************************************************/
 
  #define ACES_ADJUST_LMT \
