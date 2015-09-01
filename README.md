@@ -8,8 +8,5 @@ sigma_compare_PQ: Variations I've made to sigma_compare to provide additional pr
 dpxexr/
 Tools to flip files between EXR and DPX32 by Gary.  DPX is a simplier file structure and may be a better mezzanine level uncompressed linear interchange format than 16 bit Integer PQ. 
 
-nugget/
-HDR_CPU tool to process a nugget based rendering and one of two output display transforms for medium "Cal-Day" and high dynamic (~600-1000 nit) range. Instructions are in the source files. (Proprietary to Gary Demos)
-
 
 WARNING: Do not rely on header information of the files processed by these tools. Use at own risk, read the comments and disclaimers in the files. Basically it is just not written completely. Just directly use the floating point values in the files as you intend.
